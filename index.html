@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Split Bills</title>
+<style>
+:root{--bg:#f6f5f1;--card:#fff;--tx:#1d1d1b;--mut:#76746d;--ac:#0f766e;--acx:#fff;--bd:#e4e2da;--pos:#15803d;--neg:#b91c1c;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#151514;--card:#212120;--tx:#f1efe8;--mut:#a09d92;--ac:#2dd4bf;--acx:#06201c;--bd:#35342f;--pos:#4ade80;--neg:#f87171;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#151514;--card:#212120;--tx:#f1efe8;--mut:#a09d92;--ac:#2dd4bf;--acx:#06201c;--bd:#35342f;--pos:#4ade80;--neg:#f87171;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:520px;margin:0 auto;padding:16px}
+h1{font-size:22px;margin:4px 0 12px}
+h2{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);margin:0 0 10px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:14px;margin-bottom:14px}
+input[type=text],input[type=number],select{width:100%;padding:11px;border:1px solid var(--bd);border-radius:10px;background:var(--bg);color:var(--tx);font:inherit;margin-bottom:8px}
+button{font:inherit;border:0;border-radius:10px;padding:11px 14px;background:var(--ac);color:var(--acx);font-weight:600;cursor:pointer}
+button.g{background:transparent;color:var(--mut);padding:6px 8px;font-weight:500}
+.row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-top:1px solid var(--bd)}
+.row:first-of-type{border-top:0}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.chip{display:flex;align-items:center;gap:5px;padding:7px 11px;border:1px solid var(--bd);border-radius:20px;font-size:14px;cursor:pointer;user-select:none}
+.chip.on{background:var(--ac);color:var(--acx);border-color:var(--ac)}
+.pos{color:var(--pos);font-weight:600}.neg{color:var(--neg);font-weight:600}.mut{color:var(--mut);font-size:14px}
+.tap{cursor:pointer}.tap .ch{color:var(--mut);margin-left:6px;font-size:12px}
+.det{background:var(--bg);border-radius:10px;padding:8px 12px;margin:2px 0 8px;font-size:14px}
+.det .row{padding:6px 0}
+.btns{display:flex;gap:8px;margin-top:8px}.btns button{flex:1}
+.tag{font-size:12px;padding:2px 8px;border-radius:10px;background:var(--bd);color:var(--mut);margin-left:6px}
+.names{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.names input{margin:0}
+</style>
+</head>
+<body>
+<main>
+<h1>💸 Split Bills</h1>
+<div class="mut" id="stat" style="margin:-6px 0 12px">Join your group to start</div>
+<div class="card" id="join">
+<h2>Join group</h2>
+<input type="text" id="jname" placeholder="Your name" maxlength="16">
+<input type="text" id="jcode" placeholder="Group code (same for all 5, e.g. goa-trip-482)" maxlength="30">
+<button id="jbtn" style="width:100%">Join</button>
+<div class="mut" style="margin-top:8px">Everyone who uses the same code sees the same bills. Use a long, hard-to-guess code.</div>
+</div>
+<div id="app" style="display:none">
+
+<div class="card">
+<h2>Group</h2>
+<div class="names" id="names"></div>
+</div>
+
+<div class="card">
+<h2>Add expense</h2>
+<input type="text" id="desc" placeholder="What was it for? (Dinner, Cab…)">
+<input type="number" id="amt" placeholder="Amount ₹" inputmode="decimal">
+<div class="mut" style="margin-bottom:4px">Paid by</div>
+<select id="payer"></select>
+<div class="mut" style="margin-bottom:6px">Split between</div>
+<div class="chips" id="chips"></div>
+<button id="add" style="width:100%">Add expense</button>
+</div>
+
+<div class="card">
+<h2>Balances</h2>
+<div id="bal"></div>
+</div>
+
+<div class="card">
+<h2>Who pays whom</h2>
+<div id="settle"></div>
+</div>
+
+<div class="card">
+<h2>Payments made</h2>
+<div id="plist"></div>
+</div>
+
+<div class="card">
+<h2>Expenses</h2>
+<div id="list"></div>
+<button class="g" id="reset">Clear everything</button>
+</div>
+</div>
+</main>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script>
+// PASTE YOUR FIREBASE SETTINGS HERE (Firebase console > Project settings > Your apps > Web app)
+var FIREBASE_CONFIG={
+  apiKey:"AIzaSyBztvqsmKvpj3ubebEW1ZNRoVZUw5PypL4",
+  authDomain:"splitbillsbykb.firebaseapp.com",
+  projectId:"splitbillsbykb",
+  appId:"1:198987312712:web:ae6c762ac2cb54814af27d"
+};
+var KEY="splitbills-v1";
+var S={names:["Friend 1","Friend 2","Friend 3","Friend 4","Friend 5"],exp:[],pay:[]};var openB=null,openS=null;var DB=null,UP=null,UID=null,PN={},nt=null,CODE="",MYNAME="";
+try{var r=localStorage.getItem(KEY);if(r){var p=JSON.parse(r);if(p&&p.names&&p.names.length===5&&Array.isArray(p.exp)){S=p;if(!S.pay)S.pay=[]}}}catch(e){}
+var sel=[0,1,2,3,4];
+function save(){if(DB)return;try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+function $(i){return document.getElementById(i)}
+function inr(p){return "₹"+(Math.abs(p)/100).toLocaleString("en-IN",{minimumFractionDigits:p%100?2:0,maximumFractionDigits:2})}
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+
+function shares(e){
+  var n=e.split.length,base=Math.floor(e.amt/n),rem=e.amt-base*n,o={};
+  e.split.forEach(function(i,k){o[i]=base+(k<rem?1:0)});
+  return o;
+}
+function balances(){
+  var b=[0,0,0,0,0];
+  S.exp.forEach(function(e){
+    b[e.payer]+=e.amt;
+    var s=shares(e);for(var i in s)b[i]-=s[i];
+  });
+  S.pay.forEach(function(p){b[p.from]+=p.amt;b[p.to]-=p.amt});
+  return b;
+}
+function settle(b){
+  var c=[],d=[],out=[];
+  b.forEach(function(v,i){if(v>0)c.push([i,v]);else if(v<0)d.push([i,-v])});
+  c.sort(function(a,b){return b[1]-a[1]});d.sort(function(a,b){return b[1]-a[1]});
+  var i=0,j=0;
+  while(i<c.length&&j<d.length){
+    var m=Math.min(c[i][1],d[j][1]);
+    out.push([d[j][0],c[i][0],m]);
+    c[i][1]-=m;d[j][1]-=m;
+    if(!c[i][1])i++;if(!d[j][1])j++;
+  }
+  return out;
+}
+
+
+
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
+function who(u){return DB&&u?(u===MYNAME?" · by you":" · by "+esc(u)):""}
+function fail(e){alert("Could not save. Check your internet and Firestore rules.")}
+function addExp(o){o.by=MYNAME;o.ts=Date.now();if(DB){DB.collection("groups/"+CODE+"/expenses").add(o).catch(fail)}else{o.id=uid();S.exp.push(o);save();render()}}
+function delExp(i){var e=S.exp[i];if(DB){DB.doc("groups/"+CODE+"/expenses/"+e.id).delete().catch(fail)}else{S.exp.splice(i,1);save();render()}}
+function addPay(o){o.by=MYNAME;o.ts=Date.now();if(DB){DB.collection("groups/"+CODE+"/payments").add(o).catch(fail)}else{o.id=uid();S.pay.push(o);save();render()}}
+function delPay(i){var p=S.pay[i];if(DB){DB.doc("groups/"+CODE+"/payments/"+p.id).delete().catch(fail)}else{S.pay.splice(i,1);save();render()}}
+function pushNames(){save();if(DB){clearTimeout(nt);nt=setTimeout(function(){DB.doc("groups/"+CODE).set({names:S.names}).catch(fail)},600)}}
+function resolveNames(){
+  if(!UP)return;var ids=[],seen={};
+  S.exp.concat(S.pay).forEach(function(x){if(x.by&&!seen[x.by]){seen[x.by]=1;ids.push(x.by)}});
+  if(!ids.length)return;
+  UP.profiles(ids).then(function(ps){var ch=false;ids.forEach(function(i){var n=ps[i]&&ps[i].name||"";if(PN[i]!==n){PN[i]=n;ch=true}});if(ch)render()}).catch(function(){});
+}
+function byTs(a,b){return (a.ts||0)-(b.ts||0)}
+function snapList(q){return q.docs.map(function(x){var o=Object.assign({},x.data());o.id=x.id;return o}).sort(byTs)}
+function sg(v){return (v>0?"+":v<0?"−":"")+inr(v)}
+function detail(i){
+  var h="",tot=0;
+  S.exp.forEach(function(e){
+    var sh=shares(e)[i]||0;
+    if(e.payer!==i&&!sh)return;
+    var net=(e.payer===i?e.amt:0)-sh;tot+=net;
+    h+='<div class="row"><div>'+esc(e.desc)+'<div class="mut">'+(e.payer===i?'Paid '+inr(e.amt)+' · your share '+inr(sh):'Paid by '+esc(S.names[e.payer])+' · your share '+inr(sh))+'</div></div><span class="'+(net>0?'pos':'neg')+'">'+sg(net)+'</span></div>';
+  });
+  S.pay.forEach(function(p){
+    if(p.from===i){tot+=p.amt;h+='<div class="row"><div>Paid '+esc(S.names[p.to])+'<div class="mut">'+p.method+'</div></div><span class="pos">+'+inr(p.amt)+'</span></div>'}
+    if(p.to===i){tot-=p.amt;h+='<div class="row"><div>Received from '+esc(S.names[p.from])+'<div class="mut">'+p.method+'</div></div><span class="neg">−'+inr(p.amt)+'</span></div>'}
+  });
+  if(!h)return '<div class="det mut">Nothing yet.</div>';
+  return '<div class="det">'+h+'<div class="row"><b>Net</b><b class="'+(tot>0?'pos':tot<0?'neg':'')+'">'+(tot?sg(tot):'settled')+'</b></div></div>';
+}
+function render(){
+  // names
+  var nh="";S.names.forEach(function(n,i){nh+='<input type="text" data-i="'+i+'" value="'+esc(n)+'" maxlength="16">'});
+  if(!document.activeElement||document.activeElement.parentNode!==$("names"))$("names").innerHTML=nh;
+  // payer
+  var pv=$("payer").value||"0",ph="";
+  S.names.forEach(function(n,i){ph+='<option value="'+i+'">'+esc(n)+'</option>'});
+  $("payer").innerHTML=ph;$("payer").value=pv;
+  // chips
+  var ch="";S.names.forEach(function(n,i){ch+='<div class="chip'+(sel.indexOf(i)>-1?' on':'')+'" data-c="'+i+'">'+esc(n)+'</div>'});
+  $("chips").innerHTML=ch;
+  // balances
+  var b=balances(),bh="";
+  b.forEach(function(v,i){
+    bh+='<div class="row tap" data-b="'+i+'"><span>'+esc(S.names[i])+'<span class="ch">'+(openB===i?'▲':'▼')+'</span></span><span class="'+(v>0?'pos':v<0?'neg':'mut')+'">'+(v>0?'gets back '+inr(v):v<0?'owes '+inr(v):'settled')+'</span></div>';
+    if(openB===i)bh+=detail(i);
+  });
+  $("bal").innerHTML=bh;
+  var st=settle(b),sh="";
+  st.forEach(function(t){
+    var k=t[0]+"-"+t[1];
+    sh+='<div class="row tap" data-s="'+k+'"><span>'+esc(S.names[t[0]])+' → '+esc(S.names[t[1]])+'<span class="ch">'+(openS===k?'▲':'▼')+'</span></span><span class="pos">'+inr(t[2])+'</span></div>';
+    if(openS===k){
+      sh+='<div class="det"><div class="mut">What '+esc(S.names[t[0]])+' has to settle:</div>'+detail(t[0])+'<div class="mut">Amount paid (₹)</div><input type="number" inputmode="decimal" id="pa" value="'+(t[2]/100)+'"><div class="btns"><button data-p="'+t[0]+','+t[1]+',Cash">💵 Paid cash</button><button data-p="'+t[0]+','+t[1]+',Online">📱 Paid online</button></div></div>';
+    }
+  });
+  $("settle").innerHTML=sh||'<div class="mut">All settled up 🎉</div>';
+  var pl="";
+  S.pay.slice().reverse().forEach(function(p,k){
+    pl+='<div class="row"><div>'+esc(S.names[p.from])+' → '+esc(S.names[p.to])+' · '+inr(p.amt)+'<span class="tag">'+(p.method==="Cash"?'💵 Cash':'📱 Online')+'</span><div class="mut">'+(DB?who(p.by).slice(3)||'':'')+'</div></div><button class="g" data-dp="'+(S.pay.length-1-k)+'">✕</button></div>';
+  });
+  $("plist").innerHTML=pl||'<div class="mut">No payments yet.</div>';
+  // list
+  var lh="";
+  S.exp.slice().reverse().forEach(function(e,k){
+    var idx=S.exp.length-1-k;
+    lh+='<div class="row"><div><div>'+esc(e.desc)+' · '+inr(e.amt)+'</div><div class="mut">'+esc(S.names[e.payer])+' paid · split '+e.split.length+' way'+(e.split.length>1?'s':'')+who(e.by)+'</div></div><button class="g" data-d="'+idx+'">✕</button></div>';
+  });
+  $("list").innerHTML=lh||'<div class="mut">No expenses yet.</div>';
+}
+
+$("names").addEventListener("input",function(ev){
+  var i=ev.target.getAttribute("data-i");if(i===null)return;
+  S.names[i]=ev.target.value.trim()||("Friend "+(+i+1));pushNames();render();
+});
+$("chips").addEventListener("click",function(ev){
+  var c=ev.target.getAttribute("data-c");if(c===null)return;c=+c;
+  var k=sel.indexOf(c);if(k>-1)sel.splice(k,1);else sel.push(c);
+  render();
+});
+$("list").addEventListener("click",function(ev){
+  var d=ev.target.getAttribute("data-d");if(d===null)return;
+  delExp(+d);
+});
+$("add").addEventListener("click",function(){
+  var amt=Math.round(parseFloat($("amt").value)*100);
+  if(!(amt>0)){alert("Enter an amount");return}
+  if(!sel.length){alert("Pick at least one person to split with");return}
+  addExp({desc:$("desc").value.trim()||"Expense",amt:amt,payer:+$("payer").value,split:sel.slice().sort()});
+  $("desc").value="";$("amt").value="";
+});
+$("reset").addEventListener("click",function(){
+  if(confirm("Delete all expenses and payments for everyone?")){
+    if(DB){S.exp.forEach(function(e){DB.doc("groups/"+CODE+"/expenses/"+e.id).delete()});S.pay.forEach(function(p){DB.doc("groups/"+CODE+"/payments/"+p.id).delete()});return}
+    S={names:["Friend 1","Friend 2","Friend 3","Friend 4","Friend 5"],exp:[],pay:[]};openB=null;openS=null;save();sel=[0,1,2,3,4];render()}
+});
+$("bal").addEventListener("click",function(ev){
+  var r=ev.target.closest("[data-b]");if(!r)return;var i=+r.getAttribute("data-b");
+  openB=openB===i?null:i;render();
+});
+$("settle").addEventListener("click",function(ev){
+  var pb=ev.target.closest("[data-p]");
+  if(pb){
+    var a=pb.getAttribute("data-p").split(",");
+    var amt=Math.round(parseFloat($("pa").value)*100);
+    if(!(amt>0)){alert("Enter an amount");return}
+    addPay({from:+a[0],to:+a[1],amt:amt,method:a[2]});
+    openS=null;render();return;
+  }
+  var r=ev.target.closest("[data-s]");if(!r)return;
+  var k=r.getAttribute("data-s");openS=openS===k?null:k;render();
+});
+$("plist").addEventListener("click",function(ev){
+  var d=ev.target.getAttribute("data-dp");if(d===null)return;
+  delPay(+d);
+});
+render();
+function startJoin(name,code){
+  code=code.trim().toLowerCase().replace(/[^a-z0-9-]/g,"");
+  if(!name.trim()||code.length<4){alert("Enter your name and a group code (at least 4 letters or digits)");return}
+  if(FIREBASE_CONFIG.apiKey.indexOf("PASTE")===0){alert("Firebase settings are not added yet. Paste them in the code first.");return}
+  MYNAME=name.trim();CODE=code;
+  try{localStorage.setItem("sb-join",JSON.stringify({n:MYNAME,c:CODE}))}catch(e){}
+  $("stat").textContent="Connecting…";
+  try{if(!firebase.apps.length)firebase.initializeApp(FIREBASE_CONFIG)}catch(e){}
+  firebase.auth().signInAnonymously().then(function(){
+    DB=firebase.firestore();S.exp=[];S.pay=[];
+    var base="groups/"+CODE;
+    DB.doc(base).get().then(function(sn){if(!sn.exists)return DB.doc(base).set({names:S.names})}).catch(fail);
+    $("join").style.display="none";$("app").style.display="block";
+    $("stat").textContent="🟢 Group "+CODE+" · live sync · you are "+MYNAME;
+    DB.doc(base).onSnapshot(function(sn){var x=sn.exists&&sn.data();if(x&&x.names&&x.names.length===5)S.names=x.names;render()},function(){});
+    DB.collection(base+"/expenses").onSnapshot(function(q){S.exp=snapList(q);render()},function(){});
+    DB.collection(base+"/payments").onSnapshot(function(q){S.pay=snapList(q);render()},function(){});
+  }).catch(function(e){$("stat").textContent="Could not connect";alert("Login failed: "+e.message)});
+}
+$("jbtn").addEventListener("click",function(){startJoin($("jname").value,$("jcode").value)});
+try{var sj=JSON.parse(localStorage.getItem("sb-join")||"null");if(sj){$("jname").value=sj.n;$("jcode").value=sj.c;startJoin(sj.n,sj.c)}}catch(e){}
+</script>
+</body>
+</html>
